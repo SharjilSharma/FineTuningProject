@@ -1,0 +1,81 @@
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.Python
+env/
+venv/
+.venv/
+ENV/
+pip-wheel-metadata/
+
+# --- Environment / secrets ---------------------------------------------------
+.env
+*.env.local
+*.env.*.local
+
+# --- Model weights & checkpoints (can be huge) ------------------------------
+*.bin
+*.safetensors
+*.gguf
+*.ggml
+*.pt
+*.pth
+*.ckpt
+checkpoints/
+runs/
+output/
+adapter_weights/
+merged_model/
+
+# --- Data files (re-downloadable from HF / yfinance) -----------------------
+data/raw/
+data/processed/
+data/cache/
+*.parquet
+*.arrow
+*.jsonl.gz
+*.csv.gz
+
+# --- FAISS index files -------------------------------------------------------
+*.index
+faiss_store/*.index
+
+# --- Jupyter notebooks — outputs only (keep .ipynb structure) ---------------
+.ipynb_checkpoints/
+
+# --- Testing & coverage ------------------------------------------------------
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# --- IDEs -------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- OS artifacts ------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+# --- Logs -------------------------------------------------------------------
+*.log
+logs/
+
+# --- Alembic auto-generated (keep versions/ tracked) ------------------------
+# alembic/versions is intentionally NOT ignored
+
+# --- Miscellaneous -----------------------------------------------------------
+*.pkl
+*.pickle
+tmp/
+scratch/

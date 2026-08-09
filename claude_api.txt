@@ -1,0 +1,23 @@
+curl https://api.anthropic.com/v1/messages \
+  --header "x-api-key: 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" \
+  --header "anthropic-version: 2023-06-01" \
+  --header "content-type: application/json" \
+  --data '{"model": "claude-sonnet-4-6", "max_tokens": 1024,
+    "messages": [{"role": "user", "content": "Hello, world"}]}'
+
+    
+
+claude : "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"
+gemini: "AQ.Ab8RN6Li-_IVvcA88ekW7hmhk_HjV4g0_R8JpE_pkrkUfuBYpg"
+groq : "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"
+deepseek : "sk-668ae83748274165b814c5baab68eb6a"
+kimi k3 : "sk-aKc8SffxGpSgotljhNHj6m7iX9AiJ6uwpgwlI690YOADMdJV"
+
+
+
+
+
+
+
+
+
