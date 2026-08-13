@@ -131,6 +131,14 @@ def train(smoke_test=False):
         # prepare_model_for_kbit_training is only meaningful after 4-bit loading:
         # enables gradient checkpointing and upcasts layernorm/lm_head to fp32
         model = prepare_model_for_kbit_training(model)
+
+    # --- Device/quantization sanity check (remove after confirming GPU is used) ---
+    print(f"[DEBUG] Model device: {next(model.parameters()).device}")
+    print(f"[DEBUG] Model is_loaded_in_4bit: {getattr(model, 'is_loaded_in_4bit', None)}")
+    print(f"[DEBUG] torch.cuda.is_available(): {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"[DEBUG] CUDA device: {torch.cuda.get_device_name(0)}")
+        print(f"[DEBUG] VRAM allocated: {torch.cuda.memory_allocated(0) / 1e9:.2f} GB")
         
     peft_config = LoraConfig(
         r=cfg.lora_r,
