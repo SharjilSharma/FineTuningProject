@@ -6,6 +6,7 @@ Fine-tuning script using SFTTrainer on train_bootstrap.jsonl.
 import os
 import json
 import torch
+from huggingface_hub import hf_hub_download
 import pandas as pd
 from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
@@ -14,14 +15,45 @@ from trl import SFTTrainer, SFTConfig
 from src.finetune.config import FinetuneConfig
 from src.labeling.bootstrap import SYSTEM_PROMPT
 
+# HF dataset repo where the processed parquet is stored
+_HF_DATASET_REPO = "sharjilsharma/earnings-transcripts-data"
+_PARQUET_FILENAME = "phase1_it_transcripts.parquet"
+
+def _ensure_parquet(local_path: str) -> None:
+    """Download the parquet from HF Hub if it isn't already on disk."""
+    if os.path.exists(local_path):
+        return
+    token = os.environ.get("HF_TOKEN")
+    if not token:
+        raise EnvironmentError(
+            f"'{local_path}' not found locally and HF_TOKEN is not set. "
+            "Set HF_TOKEN so the file can be downloaded from "
+            f"huggingface.co/datasets/{_HF_DATASET_REPO}."
+        )
+    print(f"'{local_path}' not found locally — downloading from HF Hub...")
+    os.makedirs(os.path.dirname(local_path), exist_ok=True)
+    downloaded = hf_hub_download(
+        repo_id=_HF_DATASET_REPO,
+        filename=_PARQUET_FILENAME,
+        repo_type="dataset",
+        token=token,
+        local_dir=os.path.dirname(local_path),
+    )
+    # hf_hub_download may save to a cache subdir; move to expected path if needed
+    if os.path.abspath(downloaded) != os.path.abspath(local_path):
+        import shutil
+        shutil.move(downloaded, local_path)
+    print(f"Downloaded to '{local_path}'.")
+
 def load_dataset_for_sft(dataset_path: str):
     """
     Reads train_bootstrap.jsonl and formats it for chat/instruction tuning.
     We convert each chunk into a single conversation.
+    Downloads phase1_it_transcripts.parquet from HF Hub automatically if
+    it is not already present locally.
     """
     df_path = "data/processed/phase1_it_transcripts.parquet"
-    if not os.path.exists(df_path):
-        raise FileNotFoundError(f"{df_path} missing. Need this for the chunk_text.")
+    _ensure_parquet(df_path)
     df = pd.read_parquet(df_path)
     text_map = dict(zip(df['chunk_id'], df['chunk_text']))
     
