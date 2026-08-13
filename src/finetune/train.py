@@ -9,7 +9,7 @@ import torch
 from huggingface_hub import hf_hub_download
 import pandas as pd
 from datasets import Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from trl import SFTTrainer, SFTConfig
 from src.finetune.config import FinetuneConfig
@@ -103,11 +103,9 @@ def train(smoke_test=False):
         tokenizer.pad_token = tokenizer.eos_token
         
     print(f"Loading base model {cfg.base_model_name}")
-    
-    # In smoke test (local), we don't use 4bit/bf16 to avoid bitsandbytes windows issues
-    dtype = torch.float32 if smoke_test else torch.bfloat16
-    
+
     if smoke_test:
+        # Smoke test: tiny randomly-initialised model on CPU — no downloads, no bitsandbytes
         from transformers import AutoConfig
         print(f"Smoke test: creating tiny random version of {cfg.base_model_name}")
         config = AutoConfig.from_pretrained(cfg.base_model_name)
@@ -118,11 +116,20 @@ def train(smoke_test=False):
         config.num_key_value_heads = 2
         model = AutoModelForCausalLM.from_config(config)
     else:
+        # Production path: 4-bit QLoRA — loads model entirely on GPU via bitsandbytes
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",          # NormalFloat4 — best accuracy for LLMs
+            bnb_4bit_compute_dtype=torch.bfloat16,  # compute in bf16, store in 4-bit
+            bnb_4bit_use_double_quant=True,     # nested quantization saves ~0.4 bits/param
+        )
         model = AutoModelForCausalLM.from_pretrained(
             cfg.base_model_name,
-            torch_dtype=dtype,
-            device_map="auto"
+            quantization_config=bnb_config,
+            device_map="auto",                  # routes all layers to GPU automatically
         )
+        # prepare_model_for_kbit_training is only meaningful after 4-bit loading:
+        # enables gradient checkpointing and upcasts layernorm/lm_head to fp32
         model = prepare_model_for_kbit_training(model)
         
     peft_config = LoraConfig(
@@ -145,7 +152,7 @@ def train(smoke_test=False):
         num_train_epochs=cfg.num_train_epochs if not smoke_test else 1,
         save_strategy="epoch",
         fp16=False,
-        bf16=not smoke_test,
+        bf16=not smoke_test,   # bf16 for compute on Colab T4/A100; False for CPU smoke test
         report_to="none"
     )
     
