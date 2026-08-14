@@ -25,9 +25,9 @@ class FinetuneConfig:
     gradient_accumulation_steps: int = 4   # effective batch = batch_size × grad_accum = 8
     learning_rate: float = 2e-4
     num_train_epochs: int = 3
-    # 2048 accommodates full earnings chunks but is slow on T4 (~60s/step).
-    # Lower to 1024 to cut step time ~4x; raise back to 2048 for a final production run.
-    max_seq_length: int = 1024
+    # p50=1720, p90=1839, p99=1913, max=2052 — must stay at 2048+ to avoid truncating content.
+    # 2176 gives safe margin above observed max; accepts ~60s/step on T4 as a real data cost.
+    max_seq_length: int = 2176
     
     # Paths
     dataset_path: str = "data/labels/train_bootstrap.jsonl"

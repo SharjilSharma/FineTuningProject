@@ -12,6 +12,7 @@ from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, BitsAndBytesConfig
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from trl import SFTTrainer, SFTConfig
+from transformers import TrainerCallback, TrainerControl, TrainerState, TrainingArguments as HFTrainingArguments
 from src.finetune.config import FinetuneConfig
 from src.labeling.bootstrap import SYSTEM_PROMPT
 
@@ -86,6 +87,31 @@ def load_dataset_for_sft(dataset_path: str):
             data.append({"messages": messages})
             
     return Dataset.from_list(data)
+
+
+class PeakVRAMCallback(TrainerCallback):
+    """Prints peak VRAM after a given step so we can see mid-training memory usage."""
+
+    def __init__(self, report_at_step: int = 3):
+        self.report_at_step = report_at_step
+        self._reported = False
+
+    def on_step_end(
+        self,
+        args: HFTrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        **kwargs,
+    ):
+        if not self._reported and state.global_step >= self.report_at_step:
+            if torch.cuda.is_available():
+                peak_gb = torch.cuda.max_memory_allocated(0) / 1e9
+                print(
+                    f"\n[DEBUG] Peak VRAM after step {state.global_step}: "
+                    f"{peak_gb:.2f} GB  "
+                    f"(T4 ceiling: 15.0 GB, headroom: {15.0 - peak_gb:.2f} GB)"
+                )
+            self._reported = True
 
 def train(smoke_test=False):
     cfg = FinetuneConfig()
@@ -170,12 +196,16 @@ def train(smoke_test=False):
         args=sft_config,
         peft_config=peft_config,
         processing_class=tokenizer,
+        callbacks=[PeakVRAMCallback(report_at_step=3)],
     )
-    
+
     if not smoke_test:
         trainer.model.print_trainable_parameters()
-    
+
     print("Starting training...")
+    # Reset peak counter so the callback reading reflects training only, not model loading
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats(0)
     trainer.train()
     
     print(f"Saving final adapter to {cfg.output_dir}")
