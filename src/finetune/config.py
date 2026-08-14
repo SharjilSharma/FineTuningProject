@@ -28,6 +28,10 @@ class FinetuneConfig:
     # p50=1720, p90=1839, p99=1913, max=2052 — must stay at 2048+ to avoid truncating content.
     # 2176 gives safe margin above observed max; accepts ~60s/step on T4 as a real data cost.
     max_seq_length: int = 2176
+    # Cap training examples for scoped runs. None = use full dataset.
+    # 250 examples @ batch=2, grad_accum=4, 3 epochs ≈ 94 steps (~100 min on T4).
+    # Set to None for a full 1000-example run once the pipeline is proven.
+    max_train_samples: int = 250
     
     # Paths
     dataset_path: str = "data/labels/train_bootstrap.jsonl"

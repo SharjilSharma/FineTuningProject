@@ -113,15 +113,22 @@ class PeakVRAMCallback(TrainerCallback):
                 )
             self._reported = True
 
-def train(smoke_test=False):
+def train(smoke_test=False, max_train_samples_override=None):
     cfg = FinetuneConfig()
-    
+    # CLI --max-samples takes precedence over config file value
+    if max_train_samples_override is not None:
+        cfg.max_train_samples = max_train_samples_override
+
     print(f"Loading dataset from {cfg.dataset_path}")
     dataset = load_dataset_for_sft(cfg.dataset_path)
-    
+
     if smoke_test:
         print("Smoke test enabled: restricting dataset size.")
         dataset = dataset.select(range(min(4, len(dataset))))
+    elif cfg.max_train_samples is not None:
+        cap = min(cfg.max_train_samples, len(dataset))
+        print(f"Capping dataset to {cap} examples (max_train_samples={cfg.max_train_samples}, full size={len(dataset)}).")
+        dataset = dataset.select(range(cap))
         
     print(f"Loading tokenizer for {cfg.base_model_name}")
     tokenizer = AutoTokenizer.from_pretrained(cfg.base_model_name)
@@ -155,13 +162,9 @@ def train(smoke_test=False):
             device_map="auto",                  # routes all layers to GPU automatically
         )
         # prepare_model_for_kbit_training is only meaningful after 4-bit loading:
-        # enables gradient checkpointing and upcasts layernorm/lm_head to fp32
+        # enables gradient checkpointing and upcasts layernorm/lm_head to fp32.
+        # Gradient checkpointing stays ON — disabling it caused CUDA OOM at seq_len=2176.
         model = prepare_model_for_kbit_training(model)
-        # prepare_model_for_kbit_training unconditionally calls gradient_checkpointing_enable()
-        # internally — override it explicitly here since SFTConfig's flag alone won't win.
-        # We have 11+ GB VRAM headroom at batch=2 so checkpointing only costs us speed.
-        model.gradient_checkpointing_disable()
-        print("[DEBUG] Gradient checkpointing explicitly disabled.")
 
     # --- Device/quantization sanity check (remove after confirming GPU is used) ---
     print(f"[DEBUG] Model device: {next(model.parameters()).device}")
@@ -220,4 +223,16 @@ def train(smoke_test=False):
     print("Done!")
 
 if __name__ == "__main__":
-    train()
+    import argparse
+    parser = argparse.ArgumentParser(description="Fine-tune earnings signal LoRA adapter.")
+    parser.add_argument(
+        "--max-samples", type=int, default=None,
+        help="Cap the number of training examples (overrides config.max_train_samples). "
+             "Omit to use the value in FinetuneConfig (currently 250)."
+    )
+    parser.add_argument(
+        "--smoke-test", action="store_true",
+        help="Run a tiny 2-step smoke test on CPU with a randomly-initialised model."
+    )
+    args = parser.parse_args()
+    train(smoke_test=args.smoke_test, max_train_samples_override=args.max_samples)
