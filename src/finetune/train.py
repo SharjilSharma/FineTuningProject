@@ -187,6 +187,7 @@ def train(smoke_test=False):
         save_strategy="epoch",
         fp16=False,
         bf16=not smoke_test,   # bf16 for compute on Colab T4/A100; False for CPU smoke test
+        gradient_checkpointing=False, # Disable checkpointing for speed, we have VRAM headroom
         report_to="none"
     )
     

@@ -21,8 +21,8 @@ class FinetuneConfig:
     ])
     
     # Training arguments
-    batch_size: int = 2
-    gradient_accumulation_steps: int = 4   # effective batch = batch_size × grad_accum = 8
+    batch_size: int = 4
+    gradient_accumulation_steps: int = 2   # effective batch = batch_size × grad_accum = 8
     learning_rate: float = 2e-4
     num_train_epochs: int = 3
     # p50=1720, p90=1839, p99=1913, max=2052 — must stay at 2048+ to avoid truncating content.
