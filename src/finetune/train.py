@@ -157,6 +157,11 @@ def train(smoke_test=False):
         # prepare_model_for_kbit_training is only meaningful after 4-bit loading:
         # enables gradient checkpointing and upcasts layernorm/lm_head to fp32
         model = prepare_model_for_kbit_training(model)
+        # prepare_model_for_kbit_training unconditionally calls gradient_checkpointing_enable()
+        # internally — override it explicitly here since SFTConfig's flag alone won't win.
+        # We have 11+ GB VRAM headroom at batch=2 so checkpointing only costs us speed.
+        model.gradient_checkpointing_disable()
+        print("[DEBUG] Gradient checkpointing explicitly disabled.")
 
     # --- Device/quantization sanity check (remove after confirming GPU is used) ---
     print(f"[DEBUG] Model device: {next(model.parameters()).device}")
