@@ -6,7 +6,7 @@ Fine-tuning script using SFTTrainer on train_bootstrap.jsonl.
 import os
 import json
 import torch
-from huggingface_hub import hf_hub_download
+from huggingface_hub import hf_hub_download, HfApi
 import pandas as pd
 from datasets import Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, BitsAndBytesConfig
@@ -113,6 +113,74 @@ class PeakVRAMCallback(TrainerCallback):
                 )
             self._reported = True
 
+
+class HubCheckpointCallback(TrainerCallback):
+    """
+    Pushes the current LoRA adapter to a Hugging Face model repo every
+    `push_every_n_steps` optimizer steps.  Acts as a safety net against
+    Colab runtime disconnects: even if the final push cell never runs,
+    the latest committed checkpoint survives on the Hub.
+
+    The adapter is saved to a temp dir first so we never touch the
+    trainer's own output_dir mid-training.
+    """
+
+    def __init__(
+        self,
+        repo_id: str,
+        tokenizer,
+        push_every_n_steps: int = 25,
+    ):
+        self.repo_id = repo_id
+        self.tokenizer = tokenizer
+        self.push_every_n_steps = push_every_n_steps
+        self._api = HfApi()
+        token = os.environ.get("HF_TOKEN")
+        if not token:
+            raise EnvironmentError(
+                "HubCheckpointCallback requires HF_TOKEN to be set in the environment."
+            )
+        self._token = token
+        # Ensure the repo exists (no-op if already created)
+        self._api.create_repo(
+            repo_id=repo_id,
+            repo_type="model",
+            private=True,
+            exist_ok=True,
+            token=token,
+        )
+
+    def on_step_end(
+        self,
+        args: HFTrainingArguments,
+        state: TrainerState,
+        control: TrainerControl,
+        model=None,
+        **kwargs,
+    ):
+        step = state.global_step
+        if step == 0 or step % self.push_every_n_steps != 0:
+            return
+
+        import tempfile
+        print(f"\n[HubCheckpoint] Pushing adapter at step {step} to {self.repo_id} ...")
+        with tempfile.TemporaryDirectory() as tmp:
+            # save_pretrained on the PEFT-wrapped model saves only the adapter weights
+            model.save_pretrained(tmp)
+            self.tokenizer.save_pretrained(tmp)
+            try:
+                self._api.upload_folder(
+                    repo_id=self.repo_id,
+                    folder_path=tmp,
+                    repo_type="model",
+                    commit_message=f"checkpoint: step {step}",
+                    token=self._token,
+                )
+                print(f"[HubCheckpoint] ✓ step {step} pushed successfully.")
+            except Exception as exc:  # noqa: BLE001
+                # Non-fatal: log and continue training rather than aborting
+                print(f"[HubCheckpoint] ✗ push failed at step {step}: {exc}")
+
 def train(smoke_test=False, max_train_samples_override=None):
     cfg = FinetuneConfig()
     # CLI --max-samples takes precedence over config file value
@@ -195,17 +263,33 @@ def train(smoke_test=False, max_train_samples_override=None):
         save_strategy="epoch",
         fp16=False,
         bf16=not smoke_test,   # bf16 for compute on Colab T4/A100; False for CPU smoke test
-        gradient_checkpointing=False, # Disable checkpointing for speed, we have VRAM headroom
+        # gradient_checkpointing stays True (the default from prepare_model_for_kbit_training).
+        # Explicitly disabling it caused CUDA OOM at seq_len=2176 on T4.
         report_to="none"
     )
     
+    # Build callback list
+    callbacks = [PeakVRAMCallback(report_at_step=3)]
+    if not smoke_test:
+        hf_token = os.environ.get("HF_TOKEN")
+        if hf_token:
+            callbacks.append(
+                HubCheckpointCallback(
+                    repo_id=cfg.hub_adapter_repo,
+                    tokenizer=tokenizer,
+                    push_every_n_steps=cfg.hub_checkpoint_steps,
+                )
+            )
+        else:
+            print("[HubCheckpoint] HF_TOKEN not set — periodic Hub pushes disabled.")
+
     trainer = SFTTrainer(
         model=model,
         train_dataset=dataset,
         args=sft_config,
         peft_config=peft_config,
         processing_class=tokenizer,
-        callbacks=[PeakVRAMCallback(report_at_step=3)],
+        callbacks=callbacks,
     )
 
     if not smoke_test:

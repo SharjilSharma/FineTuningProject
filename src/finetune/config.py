@@ -37,3 +37,9 @@ class FinetuneConfig:
     dataset_path: str = "data/labels/train_bootstrap.jsonl"
     output_dir: str = "data/models/finetuned_adapter"
     gguf_output_dir: str = "data/models/gguf"
+
+    # Hugging Face Hub — adapter repo and periodic checkpoint cadence
+    hub_adapter_repo: str = "sharjilsharma/earnings-signal-lora-adapter"
+    # Push adapter to Hub every N optimizer steps as a disconnect safety net.
+    # At ~65s/step this fires roughly every ~27 min.
+    hub_checkpoint_steps: int = 25
