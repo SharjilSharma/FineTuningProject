@@ -265,6 +265,9 @@ def train(smoke_test=False, max_train_samples_override=None):
         bf16=not smoke_test,   # bf16 for compute on Colab T4/A100; False for CPU smoke test
         # gradient_checkpointing stays True (the default from prepare_model_for_kbit_training).
         # Explicitly disabling it caused CUDA OOM at seq_len=2176 on T4.
+        loss_type="nll",       # Bypass chunked_nll default: _patch_chunked_ce_lm_head crashes on
+                               # Kaggle when PEFT wraps lm_head forward as functools.partial.
+                               # "nll" = standard cross-entropy; safe given 11+ GB VRAM headroom.
         report_to="none"
     )
     
