@@ -13,9 +13,7 @@ import os
 def merge_and_export():
     cfg = FinetuneConfig()
     
-    if not os.path.exists(cfg.output_dir):
-        print(f"Adapter not found at {cfg.output_dir}")
-        return
+    repo_id = "sharjilsharma/earnings-signal-lora-adapter"
         
     print(f"Loading base model {cfg.base_model_name}...")
     base_model = AutoModelForCausalLM.from_pretrained(
@@ -24,8 +22,12 @@ def merge_and_export():
         device_map="cpu",
     )
     
-    print("Loading adapter...")
-    model = PeftModel.from_pretrained(base_model, cfg.output_dir)
+    print(f"Loading adapter from Hub ({repo_id})...")
+    model = PeftModel.from_pretrained(
+        base_model, 
+        repo_id,
+        token=os.environ.get("HF_TOKEN")
+    )
     
     print("Merging adapter...")
     model = model.merge_and_unload()
@@ -34,7 +36,10 @@ def merge_and_export():
     print(f"Saving merged model to {merged_dir}...")
     model.save_pretrained(merged_dir)
     
-    tokenizer = AutoTokenizer.from_pretrained(cfg.output_dir)
+    tokenizer = AutoTokenizer.from_pretrained(
+        repo_id,
+        token=os.environ.get("HF_TOKEN")
+    )
     tokenizer.save_pretrained(merged_dir)
     print("Merge complete! To create a GGUF file for local CPU inference, run the standard llama.cpp convert script on this directory.")
 
